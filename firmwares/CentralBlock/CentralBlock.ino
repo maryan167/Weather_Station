@@ -11,6 +11,7 @@
 #define BACKLIGHT_MIN 20
 #define BACKLIGHT_MAX 255
 //#define BRIGHT_CHANGE_LEVEL 100
+#define READ_SENSORS_PERIOD 5000
 
 //PINS
 #define BTN_PIN 4
@@ -47,6 +48,9 @@ MHZ19_uart mhz19;
 #include <RF24.h>
 RF24 radio(7, 8);
 
+PeriodTimer br_pr(5000);
+PeriodTimer rs_pr(READ_SENSORS_PERIOD);
+
 //Clock block
 uint8_t LT[8] = {0b00111,  0b01111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
 uint8_t UB[8] = {0b11111,  0b11111,  0b11111,  0b00000,  0b00000,  0b00000,  0b00000,  0b00000};
@@ -80,8 +84,6 @@ struct datao
   short brightness;
 } outdoor_data;
 
-PeriodTimer br_timer(5000);
-
 void setup()
 {
   Serial.begin(9600);
@@ -105,9 +107,8 @@ void setup()
   lcd.init();
   lcd.backlight();
   loadClock();
-  checkBrightness();
   readSensors();
-  readOutdoorData();
+  checkBrightness();
 }
 
 byte mode = 1;
@@ -119,13 +120,12 @@ void loop()
   checkButton();
   outdoor_data.check = 0;
   readSensors();
-  readOutdoorData();
   if (mode == 1)
   {
     t = rtc.now();
     drawClock();
     drawDate();
-    drawMainScreen();
+    drawMainScreenData();
   }
   else if (mode == 2)
   {
@@ -136,32 +136,28 @@ void loop()
     drawOutdoorData();
   }
 
-  if (isMChanged) isMChanged = false;
+  isMChanged = false;
 }
 
-bool isBright;
 byte LED_BRIGHT;
 void checkBrightness()
 {
-  if (br_timer.isReady())
+  if (br_pr.isReady())
   {
     if (digitalRead(PHOTOR_PIN))
     {
       analogWrite(BACKLIGHT_PIN, BACKLIGHT_MIN);
       LED_BRIGHT = LED_MIN;
-      isBright = false;
     }
     else
     {
       analogWrite(BACKLIGHT_PIN, BACKLIGHT_MAX);
       LED_BRIGHT = LED_MAX;
-      isBright = true;
     }
     checkCO2Led();
   }
 }
 
-unsigned co2led_t;
 void checkCO2Led()
 {
   if (indoor_data.co2ppm < 800) setLED(2);
@@ -187,21 +183,21 @@ void setLED(byte color) {
 
 void readSensors()
 {
-  indoor_data.temp = bme.readTemperature();
-  indoor_data.hum = bme.readHumidity();
-  indoor_data.pres = bme.readPressure();
-  indoor_data.co2ppm = mhz19.getPPM();
-}
+  if (rs_pr.isReady())
+  {
+    indoor_data.temp = bme.readTemperature();
+    indoor_data.hum = bme.readHumidity();
+    indoor_data.pres = bme.readPressure();
+    indoor_data.co2ppm = mhz19.getPPM();
+  }
 
-void readOutdoorData()
-{
   if (radio.available())
   {
     radio.read(&outdoor_data, sizeof(outdoor_data));
   }
 }
 
-void drawMainScreen()
+void drawMainScreenData()
 {
   lcd.setCursor(0, 2);
   lcd.print(indoor_data.temp, 1);
