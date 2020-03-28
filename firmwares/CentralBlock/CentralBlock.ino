@@ -5,19 +5,27 @@
 
 //#include <Wire.h>
 
+//SETTINGS
+#define LED_MIN 50
+#define LED_MAX 255
+#define BACKLIGHT_MIN 20
+#define BACKLIGHT_MAX 255
+//#define BRIGHT_CHANGE_LEVEL 100
+
 //PINS
 #define BTN_PIN 4
+
+#define MHZ_RX 2
+#define MHZ_TX 3
 
 #define LED_R 9
 #define LED_G 6
 #define LED_B 5
 
-#define MHZ_RX 2
-#define MHZ_TX 3
-
 #define PHOTOR_PIN A3
-//#define LCHANGE_LEVEL 2
-#define BACKLIGHT 10
+#define BACKLIGHT_PIN 10
+
+#include <PeriodTimer.h>
 
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x27, 20, 4);
@@ -72,12 +80,14 @@ struct datao
   short brightness;
 } outdoor_data;
 
+PeriodTimer br_timer(5000);
+
 void setup()
 {
   Serial.begin(9600);
   delay(20);
   pinMode(PHOTOR_PIN, INPUT);
-  pinMode(BACKLIGHT, OUTPUT);
+  pinMode(BACKLIGHT_PIN, OUTPUT);
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
@@ -96,7 +106,6 @@ void setup()
   lcd.backlight();
   loadClock();
   checkBrightness();
-  checkCO2();
   readSensors();
   readOutdoorData();
 }
@@ -107,7 +116,6 @@ bool isMChanged = false;
 void loop()
 {
   checkBrightness();
-  checkCO2();
   checkButton();
   outdoor_data.check = 0;
   readSensors();
@@ -131,23 +139,30 @@ void loop()
   if (isMChanged) isMChanged = false;
 }
 
-bool isBright = true;
+bool isBright;
+byte LED_BRIGHT;
 void checkBrightness()
 {
-  if (digitalRead(PHOTOR_PIN))
+  if (br_timer.isReady())
   {
-    analogWrite(BACKLIGHT, 18);
-    isBright = false;
-  }
-  else
-  {
-    analogWrite(BACKLIGHT, 255);
-    isBright = true;
+    if (digitalRead(PHOTOR_PIN))
+    {
+      analogWrite(BACKLIGHT_PIN, BACKLIGHT_MIN);
+      LED_BRIGHT = LED_MIN;
+      isBright = false;
+    }
+    else
+    {
+      analogWrite(BACKLIGHT_PIN, BACKLIGHT_MAX);
+      LED_BRIGHT = LED_MAX;
+      isBright = true;
+    }
+    checkCO2Led();
   }
 }
 
-bool co2Changed = false;
-void checkCO2()
+unsigned co2led_t;
+void checkCO2Led()
 {
   if (indoor_data.co2ppm < 800) setLED(2);
   else if (indoor_data.co2ppm < 1200) setLED(3);
@@ -161,16 +176,11 @@ void setLED(byte color) {
   switch (color) {
     case 0:
       break;
-    case 1: analogWrite(LED_R, 255);
+    case 1: analogWrite(LED_R, LED_BRIGHT);
       break;
-    case 2: analogWrite(LED_G, 255);
+    case 2: analogWrite(LED_G, LED_BRIGHT);
       break;
-    case 3:
-      if (false) analogWrite(LED_B, 255);
-      else {
-        analogWrite(LED_R, 255 - 50);
-        analogWrite(LED_G, 255);
-      }
+    case 3: analogWrite(LED_B, LED_BRIGHT);
       break;
   }
 }
@@ -272,7 +282,6 @@ void checkButton()
         return;
       }
     }
-    //lcd.clear();
   }
   else isClicked = false;
 }
@@ -288,27 +297,4 @@ void clearLCD()
   lcd.setCursor(0, 3);
   lcd.print("                    ");
   delay(100);
-}
-
-byte last_min;
-void drawClock()
-{
-  drawDot();
-  if (isMChanged) last_min = 61;
-  if (last_min != t.minute())
-  {
-    drawTime();
-    last_min = t.minute();
-  }
-}
-
-void loadClock() {
-  lcd.createChar(0, LT);
-  lcd.createChar(1, UB);
-  lcd.createChar(2, RT);
-  lcd.createChar(3, LL);
-  lcd.createChar(4, LB);
-  lcd.createChar(5, LR);
-  lcd.createChar(6, UMB);
-  lcd.createChar(7, LMB);
 }

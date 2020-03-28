@@ -1,3 +1,14 @@
+void loadClock() {
+  lcd.createChar(0, LT);
+  lcd.createChar(1, UB);
+  lcd.createChar(2, RT);
+  lcd.createChar(3, LL);
+  lcd.createChar(4, LB);
+  lcd.createChar(5, LR);
+  lcd.createChar(6, UMB);
+  lcd.createChar(7, LMB);
+}
+
 void drawDig(byte dig, byte x, byte y) {
   switch (dig) {
     case 0:
@@ -232,5 +243,17 @@ void drawDate()
     lcd.print(t.month());
     lcd.setCursor(17, 1);
     lcd.print(dayNames[t.dayOfTheWeek()]);
+  }
+}
+
+byte last_min;
+void drawClock()
+{
+  drawDot();
+  if (isMChanged) last_min = 61;
+  if (last_min != t.minute())
+  {
+    drawTime();
+    last_min = t.minute();
   }
 }
