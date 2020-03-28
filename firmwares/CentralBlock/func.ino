@@ -182,7 +182,14 @@ void drawTime()
       lcd.print(" ");
       drawDig(1, 1, 0);
     }
-    else drawDig(h / 10, 0, 0);
+    else
+    {
+      lcd.setCursor(3, 0);
+      lcd.print(" ");
+      lcd.setCursor(3, 1);
+      lcd.print(" ");
+      drawDig(h / 10, 0, 0);
+    }
     drawDig(h % 10, 4, 0);
   }
   if (m / 10 == 1)
