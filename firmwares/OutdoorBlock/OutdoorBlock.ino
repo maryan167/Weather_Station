@@ -3,8 +3,10 @@
     Outdoor Block code
 */
 
+//Library for energy saving
 #include "LowPower.h"
 
+//nRF24L01 libraries
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -13,7 +15,6 @@ RF24 radio(9, 10);
 struct datao
 {
   float temp, hum, pres;
-  bool check_radio = 1;
   short brightness;
 } outdoor_data;
 

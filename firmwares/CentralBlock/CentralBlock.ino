@@ -11,6 +11,7 @@
 #define BACKLIGHT_MIN 20
 #define BACKLIGHT_MAX 255
 //#define BRIGHT_CHANGE_LEVEL 100
+#define BRIGHTNESS_CHECK_PERIOD 2000
 #define READ_SENSORS_PERIOD 5000
 
 //PINS
@@ -26,50 +27,36 @@
 #define PHOTOR_PIN A3
 #define BACKLIGHT_PIN 10
 
+//Timer library
 #include <PeriodTimer.h>
 
+//Lcd Dispaly library
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
+//DS3231 library
 #include <RTClib.h>
 RTC_DS3231 rtc;
 DateTime t;
 
+//BME280 libraries
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #define SEALEVELPRESSURE_HPA (1013.25)
 Adafruit_BME280 bme;
 
+//MHZ19B library
 #include <MHZ19_uart.h>
 MHZ19_uart mhz19;
 
+//nRf24L01 libraries
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 RF24 radio(7, 8);
 
-PeriodTimer br_pr(5000);
+PeriodTimer br_pr(BRIGHTNESS_CHECK_PERIOD);
 PeriodTimer rs_pr(READ_SENSORS_PERIOD);
-
-//Clock block
-uint8_t LT[8] = {0b00111,  0b01111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
-uint8_t UB[8] = {0b11111,  0b11111,  0b11111,  0b00000,  0b00000,  0b00000,  0b00000,  0b00000};
-uint8_t RT[8] = {0b11100,  0b11110,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
-uint8_t LL[8] = {0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b01111,  0b00111};
-uint8_t LB[8] = {0b00000,  0b00000,  0b00000,  0b00000,  0b00000,  0b11111,  0b11111,  0b11111};
-uint8_t LR[8] = {0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11110,  0b11100};
-uint8_t UMB[8] = {0b11111,  0b11111,  0b11111,  0b00000,  0b00000,  0b00000,  0b11111,  0b11111};
-uint8_t LMB[8] = {0b11111,  0b00000,  0b00000,  0b00000,  0b00000,  0b11111,  0b11111,  0b11111};
-
-const char *dayNames[]  = {
-  "Sun",
-  "Mon",
-  "Tue",
-  "Wed",
-  "Thu",
-  "Fri",
-  "Sat",
-};
 
 struct datai
 {
@@ -80,21 +67,16 @@ struct datai
 struct datao
 {
   float temp, hum, pres;
-  bool check;
   short brightness;
 } outdoor_data;
 
 void setup()
 {
-  Serial.begin(9600);
-  delay(20);
   pinMode(PHOTOR_PIN, INPUT);
   pinMode(BACKLIGHT_PIN, OUTPUT);
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
-  mhz19.begin(MHZ_TX, MHZ_RX);
-  mhz19.setAutoCalibration(false);
   radio.begin();
   radio.setPayloadSize(32);
   radio.setChannel(7);
@@ -103,6 +85,8 @@ void setup()
   radio.openReadingPipe(1, 0x1234567890LL);
   radio.powerUp();
   radio.startListening();
+  mhz19.begin(MHZ_TX, MHZ_RX);
+  mhz19.setAutoCalibration(false);
   bme.begin(0x76);
   lcd.init();
   lcd.backlight();
@@ -113,12 +97,10 @@ void setup()
 
 byte mode = 1;
 bool isMChanged = false;
-
 void loop()
 {
   checkBrightness();
   checkButton();
-  outdoor_data.check = 0;
   readSensors();
   if (mode == 1)
   {
@@ -137,48 +119,6 @@ void loop()
   }
 
   isMChanged = false;
-}
-
-byte LED_BRIGHT;
-void checkBrightness()
-{
-  if (br_pr.isReady())
-  {
-    if (digitalRead(PHOTOR_PIN))
-    {
-      analogWrite(BACKLIGHT_PIN, BACKLIGHT_MIN);
-      LED_BRIGHT = LED_MIN;
-    }
-    else
-    {
-      analogWrite(BACKLIGHT_PIN, BACKLIGHT_MAX);
-      LED_BRIGHT = LED_MAX;
-    }
-    checkCO2Led();
-  }
-}
-
-void checkCO2Led()
-{
-  if (indoor_data.co2ppm < 800) setLED(2);
-  else if (indoor_data.co2ppm < 1200) setLED(3);
-  else if (indoor_data.co2ppm >= 1200) setLED(1);
-}
-
-void setLED(byte color) {
-  analogWrite(LED_R, 0);
-  analogWrite(LED_G, 0);
-  analogWrite(LED_B, 0);
-  switch (color) {
-    case 0:
-      break;
-    case 1: analogWrite(LED_R, LED_BRIGHT);
-      break;
-    case 2: analogWrite(LED_G, LED_BRIGHT);
-      break;
-    case 3: analogWrite(LED_B, LED_BRIGHT);
-      break;
-  }
 }
 
 void readSensors()
@@ -202,19 +142,24 @@ void drawMainScreenData()
   lcd.setCursor(0, 2);
   lcd.print(indoor_data.temp, 1);
   lcd.print('\337');
-  //lcd.print("C  ");
   lcd.print("  ");
-  lcd.print(outdoor_data.temp, 1);
-  lcd.print('\337');
-  //lcd.print("C  ");
-  lcd.print(" ");
-  lcd.print(outdoor_data.check);
-  lcd.print("  CO2");
   lcd.setCursor(2, 3);
   lcd.print(indoor_data.hum, 0);
-  lcd.print("%   ");
+  lcd.print("% ");
+  
+  lcd.setCursor(7, 2);
+  lcd.print(outdoor_data.temp, 1);
+  lcd.print('\337');
+  lcd.print("  ");
+  lcd.setCursor(8, 3);
   lcd.print(outdoor_data.hum, 0);
-  lcd.print("%  ");
+  lcd.print("% ");
+  
+  lcd.setCursor(13, 2);
+  if (short((float)indoor_data.co2ppm*0.4+400) < 1000) lcd.print(" ");
+  lcd.print(short((float)indoor_data.co2ppm*0.4+400));
+  
+  lcd.setCursor(13, 3);
   if (indoor_data.co2ppm < 1000) lcd.print(" ");
   lcd.print(String(indoor_data.co2ppm) + "ppm");
 }
@@ -261,6 +206,26 @@ void drawOutdoorData()
   lcd.print("mmh");
 }
 
+byte LED_BRIGHT;
+void checkBrightness()
+{
+  if (br_pr.isReady())
+  {
+    if (digitalRead(PHOTOR_PIN))
+    {
+      analogWrite(BACKLIGHT_PIN, BACKLIGHT_MIN);
+      LED_BRIGHT = LED_MIN;
+    }
+    else
+    {
+      analogWrite(BACKLIGHT_PIN, BACKLIGHT_MAX);
+      LED_BRIGHT = LED_MAX;
+    }
+    
+    checkCO2Led();
+  }
+}
+
 bool isClicked = false;
 void checkButton()
 {
@@ -271,7 +236,7 @@ void checkButton()
     {
       if (short(millis() - btn_click_time) > 0) {
         isClicked = true;
-        if (mode + 1 == 4) mode = 1;
+        if (mode + 1 > 3) mode = 1;
         else mode++;
         isMChanged = true;
         clearLCD();

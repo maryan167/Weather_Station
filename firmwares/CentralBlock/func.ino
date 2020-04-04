@@ -1,3 +1,13 @@
+//Clock block
+uint8_t LT[8] = {0b00111,  0b01111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
+uint8_t UB[8] = {0b11111,  0b11111,  0b11111,  0b00000,  0b00000,  0b00000,  0b00000,  0b00000};
+uint8_t RT[8] = {0b11100,  0b11110,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
+uint8_t LL[8] = {0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b01111,  0b00111};
+uint8_t LB[8] = {0b00000,  0b00000,  0b00000,  0b00000,  0b00000,  0b11111,  0b11111,  0b11111};
+uint8_t LR[8] = {0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11110,  0b11100};
+uint8_t UMB[8] = {0b11111,  0b11111,  0b11111,  0b00000,  0b00000,  0b00000,  0b11111,  0b11111};
+uint8_t LMB[8] = {0b11111,  0b00000,  0b00000,  0b00000,  0b00000,  0b11111,  0b11111,  0b11111};
+
 void loadClock() {
   lcd.createChar(0, LT);
   lcd.createChar(1, UB);
@@ -144,36 +154,30 @@ void drawDot()
   }
 }
 
-void drawTime()
+void drawTime(byte h, byte m)
 {
-  byte h = t.hour();
-  byte m = t.minute();
   if (h % 10 == 1)
   {
+    lcd.setCursor(0, 0);
+    lcd.print("  ");
+    lcd.setCursor(0, 1);
+    lcd.print("  ");
     lcd.setCursor(4, 0);
     lcd.print(" ");
     lcd.setCursor(4, 1);
     lcd.print(" ");
-    if (h / 10 == 1)
-    {
-      lcd.setCursor(0, 0);
-      lcd.print("  ");
-      lcd.setCursor(0, 1);
-      lcd.print("  ");
-      drawDig(1, 2, 0);
-    }
-    else
-    {
-      lcd.setCursor(0, 0);
-      lcd.print(" ");
-      lcd.setCursor(0, 1);
-      lcd.print(" ");
-      drawDig(h / 10, 1, 0);
-    }
+
+    if (h / 10 == 1) drawDig(1, 2, 0);
+    else drawDig(h / 10, 1, 0);
+
     drawDig(1, 5, 0);
   }
   else
   {
+    lcd.setCursor(3, 0);
+    lcd.print(" ");
+    lcd.setCursor(3, 1);
+    lcd.print(" ");
     if (h / 10 == 1)
     {
       lcd.setCursor(0, 0);
@@ -182,14 +186,7 @@ void drawTime()
       lcd.print(" ");
       drawDig(1, 1, 0);
     }
-    else
-    {
-      lcd.setCursor(3, 0);
-      lcd.print(" ");
-      lcd.setCursor(3, 1);
-      lcd.print(" ");
-      drawDig(h / 10, 0, 0);
-    }
+    else drawDig(h / 10, 0, 0);
     drawDig(h % 10, 4, 0);
   }
   if (m / 10 == 1)
@@ -201,19 +198,19 @@ void drawTime()
     lcd.print(" ");
     if (m % 10 == 1)
     {
-      lcd.setCursor(13, 0);
-      lcd.print("  ");
-      lcd.setCursor(13, 1);
-      lcd.print("  ");
       drawDig(1, 11, 0);
+      lcd.setCursor(13, 0);
+      lcd.print(" ");
+      lcd.setCursor(13, 1);
+      lcd.print(" ");
     }
     else
     {
+      drawDig(m % 10, 11, 0);
       lcd.setCursor(14, 0);
       lcd.print(" ");
       lcd.setCursor(14, 1);
       lcd.print(" ");
-      drawDig(m % 10, 11, 0);
     }
   }
   else
@@ -235,6 +232,31 @@ void drawTime()
   }
 }
 
+byte last_min;
+void drawClock()
+{
+  drawDot();
+  byte h = t.hour();
+  byte m = t.minute();
+  if (isMChanged) last_min = 61;
+  if (last_min != m)
+  {
+    drawTime(h, m);
+    last_min = m;
+  }
+}
+
+//Date block
+const char *dayNames[]  = {
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+};
+
 byte last_day;
 void drawDate()
 {
@@ -253,14 +275,26 @@ void drawDate()
   }
 }
 
-byte last_min;
-void drawClock()
-{
-  drawDot();
-  if (isMChanged) last_min = 61;
-  if (last_min != t.minute())
-  {
-    drawTime();
-    last_min = t.minute();
+//Led block
+void setLED(byte color) {
+  analogWrite(LED_R, 0);
+  analogWrite(LED_G, 0);
+  analogWrite(LED_B, 0);
+  switch (color) {
+    case 0:
+      break;
+    case 1: analogWrite(LED_R, LED_BRIGHT);
+      break;
+    case 2: analogWrite(LED_G, LED_BRIGHT);
+      break;
+    case 3: analogWrite(LED_B, LED_BRIGHT);
+      break;
   }
+}
+
+void checkCO2Led()
+{
+  if (indoor_data.co2ppm < 800) setLED(2);
+  else if (indoor_data.co2ppm < 1200) setLED(3);
+  else if (indoor_data.co2ppm >= 1200) setLED(1);
 }
