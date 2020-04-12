@@ -1,13 +1,18 @@
 #include "PeriodTimer.h"
 #include <Arduino.h> 
 
-PeriodTimer::PeriodTimer(unsigned long interval) {
+PeriodTimer::PeriodTimer(uint32_t interval) {
 	_interval = interval;
 }
 
 boolean PeriodTimer::isReady() {
-	if (short(millis() - _timer) >= 0) {
-		_timer = millis() + _interval;
+	if(status) {
+		_timer = millis();
+		status = false;
+		return true;
+	}
+	if (millis() - _timer >= _interval) {
+		_timer = millis();
 		return true;
 	} else return false;
 }
