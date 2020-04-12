@@ -232,9 +232,9 @@ void drawTime(byte h, byte m)
   }
 }
 
-byte last_min;
 void drawClock()
 {
+  static byte last_min;
   drawDot();
   byte h = t.hour();
   byte m = t.minute();
@@ -257,9 +257,9 @@ const char *dayNames[]  = {
   "Sat",
 };
 
-byte last_day;
 void drawDate()
 {
+  static byte last_day;
   if (isMChanged) last_day = 0;
   if (last_day != t.day())
   {
@@ -294,7 +294,7 @@ void setLED(byte color) {
 
 void checkCO2Led()
 {
-  if (indoor_data.co2ppm < 800) setLED(2);
-  else if (indoor_data.co2ppm < 1200) setLED(3);
-  else if (indoor_data.co2ppm >= 1200) setLED(1);
+  if (in_data.co2ppm < 800) setLED(2);
+  else if (in_data.co2ppm < 1200) setLED(3);
+  else if (in_data.co2ppm >= 1200) setLED(1);
 }

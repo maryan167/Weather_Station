@@ -21,6 +21,8 @@ struct datao
 void setup() {
   pinMode(A3, INPUT);
   radio.begin();
+  radio.setAutoAck(1);
+  radio.setRetries(1,5);
   radio.setPayloadSize(32);
   radio.setChannel(7);
   radio.setDataRate(RF24_1MBPS);
@@ -38,7 +40,7 @@ void loop() {
   sleep_count = 0;
   readData();
   sendData();
-  while (sleep_count < 3)
+  while (sleep_count < 60)
   {
     LowPower.powerDown(SLEEP_2S, ADC_OFF, BOD_OFF);
     ++sleep_count;
