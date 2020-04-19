@@ -1,4 +1,3 @@
-//Clock block
 uint8_t LT[8] = {0b00111,  0b01111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
 uint8_t UB[8] = {0b11111,  0b11111,  0b11111,  0b00000,  0b00000,  0b00000,  0b00000,  0b00000};
 uint8_t RT[8] = {0b11100,  0b11110,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111,  0b11111};
@@ -132,10 +131,11 @@ void drawDig(byte dig, byte x, byte y) {
   }
 }
 
-unsigned long dot_t = 0;
-short dot_delay = 700;
 void drawDot()
 {
+  static unsigned long dot_t = 0;
+  const short dot_delay = 700;
+
   if (isMChanged) dot_t = millis();
   if (short(millis() - dot_t) > 0)
   {
@@ -238,15 +238,13 @@ void drawClock()
   drawDot();
   byte h = t.hour();
   byte m = t.minute();
-  if (isMChanged) last_min = 61;
-  if (last_min != m)
+  if (last_min != m || isMChanged)
   {
     drawTime(h, m);
     last_min = m;
   }
 }
 
-//Date block
 const char *dayNames[]  = {
   "Sun",
   "Mon",
@@ -260,8 +258,7 @@ const char *dayNames[]  = {
 void drawDate()
 {
   static byte last_day;
-  if (isMChanged) last_day = 0;
-  if (last_day != t.day())
+  if (last_day != t.day() || isMChanged)
   {
     last_day = t.day();
     lcd.setCursor(15, 0);
@@ -275,7 +272,6 @@ void drawDate()
   }
 }
 
-//Led block
 void setLED(byte color) {
   analogWrite(LED_R, 0);
   analogWrite(LED_G, 0);

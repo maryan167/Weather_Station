@@ -1,4 +1,10 @@
+/*
+    Project "Weather Station" by MeteoTeam
+    Esp module code
+*/
+
 #include <ESP8266WiFi.h>
+#include <PeriodTimer.h>
 
 // WiFi network Ssid
 const char* ssid = "SSID";
@@ -16,31 +22,29 @@ void setup() {
 }
 
 void loop() {
-  readData();
+  if (Serial.available()) readData();
 }
 
 void connectToWifi()
 {
+  int attemps = 4;
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED && attemps-- > 0) {
     delay(500);
   }
 }
 
 void readData()
 {
-  if (Serial.available())
-  {
-    if (Serial.readStringUntil('\n').toInt() == -131) {
-      byte len = Serial.readStringUntil('\n').toInt();
-      String data[len];
-      for (int i = 0; i < len; i++) data[i] = Serial.readStringUntil('\n');
+  if (Serial.readStringUntil('\n').toInt() == -131) {
+    byte len = Serial.readStringUntil('\n').toInt();
+    String data[len];
+    for (int i = 0; i < len; i++) data[i] = Serial.readStringUntil('\n');
 
-      sendDataToServer(len, data);
-    }
-    else Serial.flush();
+    sendDataToServer(len, data);
   }
+  else Serial.flush();
 }
 
 void sendDataToServer(byte len, String data[])
@@ -65,4 +69,5 @@ void sendDataToServer(byte len, String data[])
   delay(10);
 
   client.flush();
+  client.stop();
 }
