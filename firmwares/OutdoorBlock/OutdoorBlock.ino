@@ -4,6 +4,13 @@
 */
 
 //PINS
+#define POWER_OFF 0 // pin D2
+#define POWER_ON 7
+
+#define PMS_TX 3
+#define PMS_RX 4
+#define PMS_SLEEP 5
+
 #define NRF_CE 9
 #define NRF_CSN 10
 
@@ -17,7 +24,7 @@ Adafruit_BME280 bme;
 
 //PMS5003 library
 #include <SoftwareSerial.h>
-SoftwareSerial pmsSerial(2, 3);
+SoftwareSerial pmsSerial(PMS_TX, PMS_RX);
 
 //nRF24L01 libraries
 #include <SPI.h>
@@ -32,17 +39,26 @@ struct pms5003data {
   uint16_t particles_03um, particles_05um, particles_10um, particles_25um, particles_50um, particles_100um;
   uint16_t unused;
   uint16_t checksum;
-};
-
-struct pms5003data data;
+} data;
 
 struct datao
 {
-  float temp, hum, pres;
-  unsigned int pm10_standard, pm25_standard, pm100_standard;
+  float temp = 0, hum = 0, pres = 0;
+  unsigned int pm10_standard = 0, pm25_standard = 0, pm100_standard = 0;
 } out_data;
 
-void setup() {  
+void powerOff() {digitalWrite(POWER_ON, LOW);}
+
+void setup() {
+  pinMode(POWER_ON, OUTPUT);
+  digitalWrite(POWER_ON, HIGH);
+  delay(10);
+
+  attachInterrupt(POWER_OFF, powerOff, RISING);
+
+  pinMode(PMS_SLEEP, OUTPUT);
+  digitalWrite(PMS_SLEEP, HIGH);
+  
   radio.begin();
   radio.setAutoAck(0);
   radio.setRetries(0,15);
@@ -64,16 +80,13 @@ void setup() {
   pmsSerial.begin(9600);
 }
 
-byte sleep_count;
+int sleep_time = 10;
 void loop() {
-  sleep_count = 0;
+  byte sleep_count = 0;
   readData();
   sendData();
-  while (sleep_count < 5)
-  {
-    LowPower.powerDown(SLEEP_2S, ADC_OFF, BOD_OFF);
-    ++sleep_count;
-  }
+  while (sleep_count++ < sleep_time) LowPower.powerDown(SLEEP_2S, ADC_OFF, BOD_OFF);
+  delay(100);
 }
 
 void readData()
@@ -83,12 +96,21 @@ void readData()
   out_data.hum = bme.readHumidity();
   out_data.pres = bme.readPressure() / 100.0F;  //hPa
 
+  digitalWrite(PMS_SLEEP, HIGH);
+  delay(10000);
   if (readPMSdata(&pmsSerial)) 
   {
     out_data.pm10_standard = data.pm10_standard;
     out_data.pm25_standard = data.pm25_standard;
     out_data.pm100_standard = data.pm100_standard;
   }
+  else 
+  {
+    out_data.pm10_standard = 6666;
+    out_data.pm25_standard = 6666;
+    out_data.pm100_standard = 6666;
+  }
+  digitalWrite(PMS_SLEEP, LOW);
 }
 
 void sendData()

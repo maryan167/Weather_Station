@@ -4,28 +4,35 @@
 */
 
 #include <ESP8266WiFi.h>
-#include <PeriodTimer.h>
 
 // WiFi network Ssid
-const char* ssid = "SSID";
+const char* ssid = "ssid";
 // WiFi network Password
-const char* password = "PASSWORD";
+const char* password = "pass";
 // Server ThingSpeak
 const char* server = "api.thingspeak.com";
 // ThingSpeak API KEY
-const char* privateKey = "WRITE API KEY";
+const char* privateKey = "key";
 
 void setup() {
   Serial.begin(115200);
+  while(!Serial);
 
-  connectToWifi();
+  connectToWiFi();
 }
 
 void loop() {
-  if (Serial.available()) readData();
+  int attemps = 4;
+  while(attemps-- > 0) 
+  {
+    if (Serial.available()) readData();
+    delay(500);
+  }
+
+  ESP.deepSleep(0);
 }
 
-void connectToWifi()
+void connectToWiFi()
 {
   int attemps = 4;
   WiFi.begin(ssid, password);

@@ -32,6 +32,7 @@
 
 #define ESP_TX 14
 #define ESP_RX 15
+#define ESP_CONTROL 16
 
 //Timer library
 #include <PeriodTimer.h>
@@ -67,7 +68,7 @@ SoftwareSerial esp8266(ESP_TX, ESP_RX);
 
 PeriodTimer br_pr(BRIGHTNESS_CHECK_PERIOD);
 PeriodTimer rs_pr(READ_SENSORS_PERIOD);
-PeriodTimer data_send_t((long) 5 * 60 * 1000);
+PeriodTimer data_send_t((long) 2 * 60 * 1000);
 
 struct datai
 {
@@ -78,7 +79,7 @@ struct datai
 struct datao
 {
   float temp = 0, hum = 0, pres = 0;
-  unsigned int pm10_s, pm25_s, pm100_s;
+  unsigned int pm10_s = 0, pm25_s = 0, pm100_s = 0;
 } out_prev, out_data;
 
 void setup()
@@ -88,7 +89,8 @@ void setup()
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
-
+  
+  pinMode(ESP_CONTROL, OUTPUT);
   esp8266.begin(115200);
 
   radio.begin();
@@ -132,7 +134,24 @@ void loop()
 
   isMChanged = false;
 
-  if (data_send_t.isReady()) sendDataToCloud();
+  int last_step = 20;
+  static unsigned int send_step = 0;
+  if (data_send_t.isReady()) send_step = 1;
+  if(send_step == 1) 
+  {
+    send_step++;
+    digitalWrite(ESP_CONTROL, HIGH);
+  }
+  else if(send_step >= 2 && send_step < last_step) 
+  {
+    send_step++;
+    digitalWrite(ESP_CONTROL, LOW);
+  }
+  else if(send_step == last_step) 
+  {
+    send_step = 0;
+    sendDataToCloud();
+  }
 }
 
 
@@ -512,7 +531,7 @@ void clearLCD()
 }
 
 void sendDataToCloud()
-{
+{ 
   const byte len = 8;
   String data[len];
   data[0] = String(in_data.temp);
