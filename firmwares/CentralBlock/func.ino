@@ -236,6 +236,7 @@ void drawClock()
 {
   static byte last_min;
   drawDot();
+  t = rtc.now();
   byte h = t.hour();
   byte m = t.minute();
   if (last_min != m || isMChanged)

@@ -68,7 +68,12 @@ SoftwareSerial esp8266(ESP_TX, ESP_RX);
 
 PeriodTimer br_pr(BRIGHTNESS_CHECK_PERIOD);
 PeriodTimer rs_pr(READ_SENSORS_PERIOD);
+PeriodTimer wcc_pr((long) 10 * 60 * 1000);
 PeriodTimer data_send_t((long) 2 * 60 * 1000);
+
+uint32_t pressure_array[6];
+byte time_array[6];
+short wcc = 0;
 
 struct datai
 {
@@ -89,7 +94,7 @@ void setup()
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
-  
+
   pinMode(ESP_CONTROL, OUTPUT);
   esp8266.begin(115200);
 
@@ -115,18 +120,25 @@ void setup()
                   Adafruit_BME280::FILTER_X16,
                   Adafruit_BME280::STANDBY_MS_0_5);
 
+  uint32_t Press = bme.readPressure();
+  for (byte i = 0; i < 6; i++) {
+    pressure_array[i] = Press;
+    time_array[i] = i;
+  }
+  
   lcd.init();
   loadClock();
   lcd.backlight();
 }
 
 byte mode = 1;
-bool isMChanged = false;
+bool isMChanged = true;
 void loop()
 {
   checkBrightness();
   checkButton();
   readSensors();
+  if(wcc_pr.isReady()) checkWeather();
 
   if (mode == 1) drawMainScreenData();
   else if (mode == 2) drawIndoorData();
@@ -134,25 +146,10 @@ void loop()
 
   isMChanged = false;
 
-  int last_step = 20;
-  static unsigned int send_step = 0;
-  if (data_send_t.isReady()) send_step = 1;
-  if(send_step == 1) 
-  {
-    send_step++;
-    digitalWrite(ESP_CONTROL, HIGH);
-  }
-  else if(send_step >= 2 && send_step < last_step) 
-  {
-    send_step++;
-    digitalWrite(ESP_CONTROL, LOW);
-  }
-  else if(send_step == last_step) 
-  {
-    send_step = 0;
-    sendDataToCloud();
-  }
+  if (data_send_t.isReady()) sendDataToCloud(1);
+  else sendDataToCloud(0);
 }
+
 
 
 bool in_prev_status = false;
@@ -173,7 +170,7 @@ void readSensors()
       in_prev.co2ppm = in_data.co2ppm;
     }
     else in_prev_status = false;
-    
+
     //bme.takeForcedMeasurement();
     in_data.temp = bme.readTemperature();
     in_data.hum = bme.readHumidity();
@@ -195,36 +192,109 @@ void readSensors()
 
 void drawMainScreenData()
 {
-  if (isMChanged) loadClock();
-  t = rtc.now();
+  if (isMChanged)
+  {
+    loadClock();
+
+
+    lcd.setCursor(0, 2);
+    lcd.print("I:");
+
+    lcd.setCursor(7, 2);
+    lcd.print('\337');
+
+    lcd.setCursor(11, 2);
+    lcd.print("%");
+
+    lcd.setCursor(17, 2);
+    lcd.print("ppm");
+
+
+    lcd.setCursor(0, 3);
+    lcd.print("O:");
+
+    lcd.setCursor(7, 3);
+    lcd.print('\337');
+
+    lcd.setCursor(11, 3);
+    lcd.print("%");
+
+    lcd.setCursor(13, 3);
+    lcd.print("wc:");
+    lcd.setCursor(19, 3);
+    lcd.print("%");
+  }
+
   drawClock();
   drawDate();
 
-  lcd.setCursor(0, 2);
+  lcd.setCursor(2, 2);
+  if (in_data.temp > -10) lcd.print(" ");
+  if (in_data.temp >= 0 && in_data.temp < 10) lcd.print(" ");
   lcd.print(in_data.temp, 1);
-  lcd.print('\337');
-  lcd.print("  ");
 
-  lcd.setCursor(2, 3);
-  lcd.print(in_data.hum, 0);
-  lcd.print("% ");
-
-  lcd.setCursor(7, 2);
-  lcd.print(out_data.temp, 1);
-  lcd.print('\337');
-  lcd.print(" ");
-
-  lcd.setCursor(8, 3);
-  lcd.print(out_data.hum, 0);
-  lcd.print("% ");
+  lcd.setCursor(9, 2);
+  if (in_data.hum < 10) lcd.print(" ");
+  lcd.print(constrain(in_data.hum, 0, 99), 0);
 
   lcd.setCursor(13, 2);
-  if (short((float)in_data.co2ppm * 0.32 + 400) < 1000) lcd.print(" ");
-  lcd.print(short((float)in_data.co2ppm * 0.32 + 400));
-
-  lcd.setCursor(13, 3);
   if (in_data.co2ppm < 1000) lcd.print(" ");
-  lcd.print(String(in_data.co2ppm) + "ppm");
+  lcd.print(in_data.co2ppm);
+
+
+  lcd.setCursor(2, 3);
+  if (out_data.temp > -10) lcd.print(" ");
+  if (out_data.temp >= 0 && out_data.temp < 10) lcd.print(" ");
+  lcd.print(out_data.temp, 1);
+
+  lcd.setCursor(9, 3);
+  if (out_data.hum < 10) lcd.print(" ");
+  lcd.print(constrain(out_data.hum, 0, 99), 0);
+
+
+  //  lcd.setCursor(13, 2);
+  //  if (short((float)in_data.co2ppm * 0.32 + 400) < 1000) lcd.print(" ");
+  //  lcd.print(short((float)in_data.co2ppm * 0.32 + 400));
+
+  lcd.setCursor(16, 3);
+  if(abs(wcc) == 0) lcd.print(" ");
+  if(abs(wcc) < 10) lcd.print(" ");
+  if(wcc > 0) lcd.print("+");
+  lcd.print(wcc);
+}
+
+
+void checkWeather() 
+{
+  long pressure = 0;
+  for (byte i = 0; i < 10; i++) {
+    pressure += bme.readPressure();
+  }
+  pressure /= 10;
+
+  unsigned long sumX, sumY, sumX2, sumXY;
+  for (byte i = 0; i < 5; i++) {
+      pressure_array[i] = pressure_array[i + 1];
+    }
+    pressure_array[5] = pressure;
+
+    sumX = 0;
+    sumY = 0;
+    sumX2 = 0;
+    sumXY = 0;
+    for (int i = 0; i < 6; i++) {
+      sumX += time_array[i];
+      sumY += (long)pressure_array[i];
+      sumX2 += time_array[i] * time_array[i];
+      sumXY += (long)time_array[i] * pressure_array[i];
+    }
+    float a = 0;
+    a = (long)6 * sumXY;
+    a = a - (long)sumX * sumY;
+    a = (float)a / (6 * sumX2 - sumX * sumX);
+    float delta = a * 6;
+
+    wcc = map(delta, -250, 250, 100, -100);
 }
 
 byte term[] = {
@@ -274,13 +344,13 @@ void loadIndoorSymbols()
 
 void drawIndoorData()
 {
-  if (isMChanged) 
+  if (isMChanged)
   {
     loadIndoorSymbols();
-    
+
     lcd.setCursor(14, 0);
     lcd.print("Indoor");
-    
+
     lcd.setCursor(0, 0);
     lcd.write(0);
     lcd.print(":");
@@ -289,7 +359,7 @@ void drawIndoorData()
     lcd.print("(");
     lcd.setCursor(10, 0);
     lcd.print(")");
-    
+
     lcd.setCursor(0, 1);
     lcd.write(1);
     lcd.print(":");
@@ -297,7 +367,7 @@ void drawIndoorData()
     lcd.print("%(");
     lcd.setCursor(8, 1);
     lcd.print(")");
-    
+
     lcd.setCursor(0, 2);
     lcd.write(2);
     lcd.print(":");
@@ -305,19 +375,19 @@ void drawIndoorData()
     lcd.print("mmh(");
     lcd.setCursor(11, 2);
     lcd.print(")");
-    
+
     lcd.setCursor(0, 3);
-    lcd.print("Co2: ");
-    lcd.setCursor(9, 3);
+    lcd.print("Co2:");
+    lcd.setCursor(8, 3);
     lcd.print("ppm(");
-    lcd.setCursor(14, 3);
+    lcd.setCursor(13, 3);
     lcd.print(")");
   }
 
   //Temperature
   lcd.setCursor(2, 0);
-  if(in_data.temp > -10) lcd.print(" ");
-  if(in_data.temp >= 0 && in_data.temp < 10) lcd.print(" ");
+  if (in_data.temp > -10) lcd.print(" ");
+  if (in_data.temp >= 0 && in_data.temp < 10) lcd.print(" ");
   lcd.print(in_data.temp, 1);
   lcd.setCursor(9, 0);
   if (in_data.temp - in_prev.temp > 0.1 && (in_prev_status || isMChanged)) lcd.write(3);
@@ -326,8 +396,8 @@ void drawIndoorData()
 
   //Humidity
   lcd.setCursor(2, 1);
-  if(in_data.hum != 100) lcd.print(" ");
-  else if(in_data.hum < 10) lcd.print(" ");
+  if (in_data.hum != 100) lcd.print(" ");
+  if (in_data.hum < 10) lcd.print(" ");
   lcd.print(in_data.hum, 0);
   lcd.setCursor(7, 1);
   if (in_data.hum - in_prev.hum > 0.5 && (in_prev_status || isMChanged)) lcd.write(3);
@@ -336,7 +406,7 @@ void drawIndoorData()
 
   //Pressure
   lcd.setCursor(2, 2);
-  if(in_data.pres < 1000) lcd.print(" ");
+  if (in_data.pres < 1000) lcd.print(" ");
   lcd.print(in_data.pres, 0);
   lcd.setCursor(10, 2);
   if (in_data.pres - in_prev.pres > 0.5 && (in_prev_status || isMChanged)) lcd.write(3);
@@ -344,10 +414,10 @@ void drawIndoorData()
   else if (in_prev_status || isMChanged) lcd.print(".");
 
   //Co2
-  lcd.setCursor(5, 3);
-  if(in_data.co2ppm < 1000) lcd.print(" ");
+  lcd.setCursor(4, 3);
+  if (in_data.co2ppm < 1000) lcd.print(" ");
   lcd.print(in_data.co2ppm);
-  lcd.setCursor(13, 3);
+  lcd.setCursor(12, 3);
   if (in_data.co2ppm - in_prev.co2ppm > 50 && (in_prev_status || isMChanged)) lcd.write(3);
   else if (in_prev.co2ppm - in_data.co2ppm > 50 && (in_prev_status || isMChanged)) lcd.write(4);
   else if (in_prev_status || isMChanged) lcd.print(".");
@@ -395,13 +465,13 @@ void loadOutdoorSymbols()
 
 void drawOutdoorData()
 {
-  if (isMChanged) 
+  if (isMChanged)
   {
     loadOutdoorSymbols();
 
     lcd.setCursor(13, 0);
     lcd.print("Outdoor");
-    
+
     lcd.setCursor(0, 0);
     lcd.write(0);
     lcd.print(":");
@@ -410,7 +480,7 @@ void drawOutdoorData()
     lcd.print("(");
     lcd.setCursor(10, 0);
     lcd.print(")");
-    
+
     lcd.setCursor(0, 1);
     lcd.write(1);
     lcd.print(":");
@@ -418,7 +488,7 @@ void drawOutdoorData()
     lcd.print("%(");
     lcd.setCursor(8, 1);
     lcd.print(")");
-    
+
     lcd.setCursor(0, 2);
     lcd.write(2);
     lcd.print(":");
@@ -428,7 +498,7 @@ void drawOutdoorData()
     lcd.print(")");
     lcd.setCursor(14, 2);
     lcd.print("1:");
-    
+
     lcd.setCursor(0, 3);
     lcd.print("Pm: 10:");
     lcd.setCursor(12, 3);
@@ -437,8 +507,8 @@ void drawOutdoorData()
 
   //Temperature
   lcd.setCursor(2, 0);
-  if(out_data.temp > -10) lcd.print(" ");
-  if(out_data.temp >= 0 && out_data.temp < 10) lcd.print(" ");
+  if (out_data.temp > -10) lcd.print(" ");
+  if (out_data.temp >= 0 && out_data.temp < 10) lcd.print(" ");
   lcd.print(out_data.temp, 1);
   lcd.setCursor(9, 0);
   if (out_data.temp - out_prev.temp > 0.1 && (out_prev_status || isMChanged)) lcd.write(3);
@@ -447,8 +517,8 @@ void drawOutdoorData()
 
   //Humidity
   lcd.setCursor(2, 1);
-  if(out_data.hum != 100) lcd.print(" ");
-  else if(out_data.hum < 10) lcd.print(" ");
+  if (out_data.hum != 100) lcd.print(" ");
+  if (out_data.hum < 10) lcd.print(" ");
   lcd.print(out_data.hum, 0);
   lcd.setCursor(7, 1);
   if (out_data.hum - out_prev.hum > 0.5 && (out_prev_status || isMChanged)) lcd.write(3);
@@ -457,7 +527,8 @@ void drawOutdoorData()
 
   //Pressure
   lcd.setCursor(2, 2);
-  if(out_data.pres < 1000) lcd.print(" ");
+  if (out_data.pres == 0) lcd.print("  ");
+  if (out_data.pres < 1000) lcd.print(" ");
   lcd.print(out_data.pres, 0);
   lcd.setCursor(10, 2);
   if (out_data.pres - out_prev.pres > 0.5 && (out_prev_status || isMChanged)) lcd.write(3);
@@ -467,14 +538,23 @@ void drawOutdoorData()
   //Pm1
   lcd.setCursor(16, 2);
   lcd.print(out_data.pm10_s);
-  
+  if (out_data.pm10_s < 10) lcd.print("   ");
+  else if (out_data.pm10_s < 100) lcd.print("  ");
+  else if (out_data.pm10_s < 1000) lcd.print(" ");
+
   //Pm10
   lcd.setCursor(7, 3);
   lcd.print(out_data.pm100_s);
-  
+  if (out_data.pm100_s < 10) lcd.print("   ");
+  else if (out_data.pm100_s < 100) lcd.print("  ");
+  else if (out_data.pm100_s < 1000) lcd.print(" ");
+
   //Pm2.5
   lcd.setCursor(16, 3);
   lcd.print(out_data.pm25_s);
+  if (out_data.pm25_s < 10) lcd.print("   ");
+  else if (out_data.pm25_s < 100) lcd.print("  ");
+  else if (out_data.pm25_s < 1000) lcd.print(" ");
 }
 
 byte LED_BRIGHT;
@@ -530,19 +610,38 @@ void clearLCD()
   lcd.print("                    ");
 }
 
-void sendDataToCloud()
-{ 
-  const byte len = 8;
-  String data[len];
-  data[0] = String(in_data.temp);
-  data[1] = String(in_data.hum);
-  data[2] = String(in_data.pres);
-  data[3] = String(in_data.co2ppm);
-  data[4] = String(out_data.temp);
-  data[5] = String(out_data.hum);
-  data[6] = String(out_data.pm25_s);
-  data[7] = String(out_data.pm100_s);
-  esp8266.println(String(-131));
-  esp8266.println(String(len));
-  for (int i = 0; i < len; i++) esp8266.println(data[i]);
+void sendDataToCloud(bool s)
+{
+  static unsigned int send_step = 0;
+  if(s == 1) send_step = 1;
+  
+  int last_step = 20;
+  if (send_step == 1)
+  {
+    send_step++;
+    digitalWrite(ESP_CONTROL, HIGH);
+  }
+  else if (send_step >= 2 && send_step < last_step)
+  {
+    send_step++;
+    digitalWrite(ESP_CONTROL, LOW);
+  }
+  else if (send_step == last_step)
+  {
+    send_step = 0;
+    
+    const byte len = 8;
+    String data[len];
+    data[0] = String(in_data.temp);
+    data[1] = String(in_data.hum);
+    data[2] = String(in_data.pres);
+    data[3] = String(in_data.co2ppm);
+    data[4] = String(out_data.temp);
+    data[5] = String(out_data.hum);
+    data[6] = String(out_data.pm25_s);
+    data[7] = String(out_data.pm100_s);
+    esp8266.println(String(-131));
+    esp8266.println(String(len));
+    for (int i = 0; i < len; i++) esp8266.println(data[i]);
+  }
 }
