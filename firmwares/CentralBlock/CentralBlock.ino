@@ -85,6 +85,7 @@ struct datao
 {
   float temp = 0, hum = 0, pres = 0;
   unsigned int pm10_s = 0, pm25_s = 0, pm100_s = 0;
+  float acc_v = -1;
 } out_prev, out_data;
 
 void setup()
@@ -456,11 +457,23 @@ byte rain_symb[] = {
   B00000
 };
 
+byte btr_symb[] = {
+  B01110,
+  B11011,
+  B10001,
+  B10101,
+  B11111,
+  B10101,
+  B10001,
+  B11111
+};
+
 void loadOutdoorSymbols()
 {
   lcd.createChar(0, term);
   lcd.createChar(1, drop);
   lcd.createChar(2, pres);
+  lcd.createChar(3, btr_symb);
 }
 
 void drawOutdoorData()
@@ -488,6 +501,11 @@ void drawOutdoorData()
     lcd.print("%(");
     lcd.setCursor(8, 1);
     lcd.print(")");
+
+    lcd.setCursor(14, 1);
+    lcd.write(3);
+    lcd.setCursor(19, 1);
+    lcd.print("v");
 
     lcd.setCursor(0, 2);
     lcd.write(2);
@@ -524,6 +542,11 @@ void drawOutdoorData()
   if (out_data.hum - out_prev.hum > 0.5 && (out_prev_status || isMChanged)) lcd.write(3);
   else if (out_prev.hum - out_data.hum > 0.5 && (out_prev_status || isMChanged)) lcd.write(4);
   else if (out_prev_status || isMChanged) lcd.print(".");
+
+  //Outdoor battery voltage
+  lcd.setCursor(15, 1);
+  if(out_data.acc_v == -1) lcd.print(" -- ");
+  else lcd.print(out_data.acc_v, 2);
 
   //Pressure
   lcd.setCursor(2, 2);
